@@ -28,6 +28,8 @@ struct RegisterStore
 RegisterStore  AdderStore[8];
 RegisterStore  MultDivStore[8];
 
+int count = 0;
+
 int main(int argc, char* argv[])
 {
 	ifstream infile;
@@ -36,7 +38,19 @@ int main(int argc, char* argv[])
 	string line = "";
 
 	//loop as long as there are lines left in the trace file
-	while(getline(infile, line))
+	while(getline(infile, line) && count++ < 10)
 	{
+		int idx1 = line.find(" ");
+		int idx2 = line.find(" ", idx1 + 1);
+		int idx3 = line.find(" ", idx2 + 1);
+
+		if(idx3 <= 0) idx3 = line.size() - 1;
+		
+		string inst = line.substr(0, idx1);
+		string dest = line.substr(idx1 + 1, idx2 - idx1 - 1);
+		string src1 = line.substr(idx2 + 1, idx3 - idx2 - 1);
+		string src2 = line.substr(idx3 + 1, line.size() - idx3 - 2);
+
+		printf("%s/%s/%s/%s\n", inst.c_str(), dest.c_str(), src1.c_str(), src2.c_str());
 	}
 }

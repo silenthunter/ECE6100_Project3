@@ -11,6 +11,8 @@ const int MULD_CYCLES = 4;//fully pipelined
 const int LD_CYCLES = 3;//fully pipelined
 const int SD_CYCLES = 1;//fully pipelined
 
+int RSSize;
+
 
 //Tags
 //0 - 7 ADDD
@@ -38,7 +40,8 @@ RegisterStore  MultDivStore[8];
 RegisterStore  LDStore[8];
 RegisterFile RegFile;
 
-int count = 0;
+int instCount = 0;
+int divideDelay = 0;
 int cycle = 0;
 int fullStoreStall = 0;
 int cdbStall = 0;
@@ -52,6 +55,9 @@ inline void executeCycle();
 
 int main(int argc, char* argv[])
 {
+
+	RSSize = atoi(argv[1]);
+
 	ifstream infile;
 	infile.open("trace.txt");
 
@@ -81,8 +87,9 @@ int main(int argc, char* argv[])
 	}
 
 	//loop as long as there are lines left in the trace file
-	while(getline(infile, line))// && count++ < 1000)
+	while(getline(infile, line))
 	{
+		instCount++;
 		int idx1 = line.find(" ");
 		int idx2 = line.find(" ", idx1 + 1);
 		int idx3 = line.find(" ", idx2 + 1);
@@ -110,30 +117,26 @@ int main(int argc, char* argv[])
 		if(inst.compare("ADDD") == 0)
 		{
 			addToUnit(AdderStore, destNum, src1Num, src2Num, ADDD_CYCLES, 0);
-			/*int addIdx = findFirstOpen(AdderStore);
-			AdderStore[addIdx].Src = src1Num;
-			AdderStore[addIdx].Sink = src2Num;
-			AdderStore[addIdx].Cycles = ADDD_CYCLES;
-			RegFile.Busy[destNum] = 1;
-			RegFile.Tag[destNum] = addIdx;*/
 		}
 		else if(inst.compare("MULD") == 0)
 		{
 			addToUnit(MultDivStore, destNum, src1Num, src2Num, MULD_CYCLES, 8);
-			/*int muldIdx = findFirstOpen(MultDivStore);
-			MultDivStore[muldIdx].Src = src1Num;
-			MultDivStore[muldIdx].Sink = src2Num;
-			MultDivStore[addIdx].Cycles = MULD_CYCLES;
-			RegFile.Busy[destNum] = 1;
-			RegFile.Tag[destNum] = muldIdx + 8;//Offset for the muld tags*/
 		}
 		else if(inst.compare("LD") == 0)
 		{
 			addToUnit(LDStore, destNum, src1Num, src2Num, LD_CYCLES, 16);
 		}
-		else if(inst.compare("SD") == 0);
+		else if(inst.compare("DIVD") == 0)
+		{
+			addToUnit(MultDivStore, destNum, src1Num, src2Num, DIVD_CYCLES, 8);
+		}
+		else if(inst.compare("SD") == 0)
+		{
+		}
 		else
+		{
 			printf("Unknown instruction: %s\n", inst.c_str());
+		}
 
 		executeCycle();
 	}
@@ -142,6 +145,7 @@ int main(int argc, char* argv[])
 		executeCycle();
 
 	printf("Cycles: %d\nStalls %d\nCDB Stalls %d\n", cycle, fullStoreStall, cdbStall);
+	printf("CPI: %.2f\n", (float)instCount / (float)cycle);
 }
 
 bool instRunning()
@@ -224,7 +228,9 @@ void completeInst(RegisterStore store[], int idx, int offset)
 void executeCycle()
 {
 	bool progress = false;
-	if(++cycle % 5000 == 0) printf("Cycle #%d\n", cycle);
+	cycle++;
+	//if(++cycle % 5000 == 0) printf("Cycle #%d\n", cycle);
+	if(divideDelay > 0) divideDelay--;
 	for(int i = 0; i < 8; i++)
 	{
 		if(AdderStore[i].Cycles > 0 && !(AdderStore[i].SrcTag >= 0 || AdderStore[i].SinkTag >= 0))
@@ -242,6 +248,13 @@ void executeCycle()
 		if(MultDivStore[i].Cycles > 0 && !(MultDivStore[i].SrcTag >= 0|| MultDivStore[i].SinkTag >= 0))
 		{
 			progress = true;
+
+			//Take into account the divider delay
+			if(MultDivStore[i].Cycles == DIVD_CYCLES && divideDelay != 0)
+				continue;
+			else if(MultDivStore[i].Cycles == DIVD_CYCLES && divideDelay == 0)//The divider is occupied currently
+				divideDelay = 5;
+
 			MultDivStore[i].Cycles--;
 			//This instruction is done
 			if(MultDivStore[i].Cycles == 0)
@@ -285,7 +298,7 @@ void executeCycle()
 
 int findFirstOpen(RegisterStore store[])
 {
-	for(int i = 0; i < 8; i++)
+	for(int i = 0; i < RSSize; i++)
 	{
 		if(store[i].SinkTag == -1 && store[i].Sink == -1 && store[i].SrcTag == -1 && store[i].Src == -1 && store[i].Cycles == 0) return i;
 	}

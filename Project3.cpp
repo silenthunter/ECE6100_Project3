@@ -10,8 +10,11 @@ const int DIVD_CYCLES = 10;//5 cycles before new instruction
 const int MULD_CYCLES = 4;//fully pipelined
 const int LD_CYCLES = 3;//fully pipelined
 const int SD_CYCLES = 1;//fully pipelined
+const int DIV_DELAY = 5;
 
-int RSSize;
+int RSAdderSize;
+int RSMultDivSize;
+int LDSDSize;
 
 
 //Tags
@@ -47,19 +50,21 @@ int fullStoreStall = 0;
 int cdbStall = 0;
 queue<int> completionQueue;
 
-inline int findFirstOpen(RegisterStore[]);
+inline int findFirstOpen(RegisterStore[], int);
 inline bool instRunning();
 inline void completeInst(RegisterStore, int, int);
-inline void addToUnit(RegisterStore store[], int destNum, int src1Num, int src2Num, int CYCLES, int tagOffset);
+inline void addToUnit(RegisterStore [], int, int, int, int, int, int);
 inline void executeCycle();
 
 int main(int argc, char* argv[])
 {
 
-	RSSize = atoi(argv[1]);
+	RSAdderSize = atoi(argv[2]);
+	RSMultDivSize = atoi(argv[3]);
+	LDSDSize = atoi(argv[4]);
 
 	ifstream infile;
-	infile.open("trace.txt");
+	infile.open(argv[1]);
 
 	string line = "";
 
@@ -89,6 +94,7 @@ int main(int argc, char* argv[])
 	//loop as long as there are lines left in the trace file
 	while(getline(infile, line))
 	{
+		executeCycle();
 		instCount++;
 		int idx1 = line.find(" ");
 		int idx2 = line.find(" ", idx1 + 1);
@@ -116,35 +122,35 @@ int main(int argc, char* argv[])
 
 		if(inst.compare("ADDD") == 0)
 		{
-			addToUnit(AdderStore, destNum, src1Num, src2Num, ADDD_CYCLES, 0);
+			addToUnit(AdderStore, destNum, src1Num, src2Num, ADDD_CYCLES, 0, RSAdderSize);
 		}
 		else if(inst.compare("MULD") == 0)
 		{
-			addToUnit(MultDivStore, destNum, src1Num, src2Num, MULD_CYCLES, 8);
+			addToUnit(MultDivStore, destNum, src1Num, src2Num, MULD_CYCLES, 8, RSMultDivSize);
 		}
 		else if(inst.compare("LD") == 0)
 		{
-			addToUnit(LDStore, destNum, src1Num, src2Num, LD_CYCLES, 16);
+			addToUnit(LDStore, destNum, src1Num, src2Num, LD_CYCLES, 16, LDSDSize);
 		}
 		else if(inst.compare("DIVD") == 0)
 		{
-			addToUnit(MultDivStore, destNum, src1Num, src2Num, DIVD_CYCLES, 8);
+			addToUnit(MultDivStore, destNum, src1Num, src2Num, DIVD_CYCLES, 8, RSMultDivSize);
 		}
 		else if(inst.compare("SD") == 0)
 		{
+			addToUnit(LDStore, destNum, src1Num, src2Num, 1, 16, LDSDSize);
 		}
 		else
 		{
 			printf("Unknown instruction: %s\n", inst.c_str());
 		}
 
-		executeCycle();
 	}
 
 	while(instRunning())
 		executeCycle();
 
-	printf("Cycles: %d\nStalls %d\nCDB Stalls %d\n", cycle, fullStoreStall, cdbStall);
+	printf("Cycles: %d\nRS Stalls %d\nCDB Stalls %d\n", cycle, fullStoreStall, cdbStall);
 	printf("CPI: %.2f\n", (float)instCount / (float)cycle);
 }
 
@@ -163,14 +169,14 @@ bool instRunning()
 	return false;
 }
 
-void addToUnit(RegisterStore store[], int destNum, int src1Num, int src2Num, int CYCLES, int tagOffset)
+void addToUnit(RegisterStore store[], int destNum, int src1Num, int src2Num, int CYCLES, int tagOffset, int availRS)
 {
-	int idx = findFirstOpen(store);
+	int idx = findFirstOpen(store, availRS);
 	while(idx < 0)//Stall until an open unit is found
 	{
 		fullStoreStall++;
 		executeCycle();
-		idx = findFirstOpen(store);
+		idx = findFirstOpen(store, availRS);
 	}
 
 	if(RegFile.Busy[src1Num] && src2Num >= 0)//See if the register is busy
@@ -253,7 +259,7 @@ void executeCycle()
 			if(MultDivStore[i].Cycles == DIVD_CYCLES && divideDelay != 0)
 				continue;
 			else if(MultDivStore[i].Cycles == DIVD_CYCLES && divideDelay == 0)//The divider is occupied currently
-				divideDelay = 5;
+				divideDelay = DIV_DELAY;
 
 			MultDivStore[i].Cycles--;
 			//This instruction is done
@@ -296,9 +302,9 @@ void executeCycle()
 	}*/
 }
 
-int findFirstOpen(RegisterStore store[])
+int findFirstOpen(RegisterStore store[], int availRS)
 {
-	for(int i = 0; i < RSSize; i++)
+	for(int i = 0; i < availRS; i++)
 	{
 		if(store[i].SinkTag == -1 && store[i].Sink == -1 && store[i].SrcTag == -1 && store[i].Src == -1 && store[i].Cycles == 0) return i;
 	}

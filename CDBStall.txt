@@ -1,0 +1,2 @@
+MULD F0 F0 F0
+LD F1 X

@@ -112,7 +112,11 @@ Figure \ref{fig:plot1} shows the results of CPI based on number of reservation s
 
 With any functional unit having a single reservation station, there are significant performance impacts. Each instruction must wait until the previous one has finished executing, even if it was stalled and waiting for a dependency. A single reservation station is no better than a naive approach to scheduling, as no benefit is gained.
 
+CPI and reservation station stalls appear to be inversely related from the data I gathered. As the number of stalls rises the CPI falls. This makes sense of course, as these stalls are lost potential that could be used to process additional instructions. Stalls waiting to aqcuire the commond data bus seem to be mostly unrelated to CPI however. There is little that can be done to ensure that multiple instructions don't complete at the same time, and any number of reservation stations over one runs the risk of experiencing a common data bus stall.
+
 The importance slots for each functional unit seems to be about equal, with the adder increases the CPI at a slightly higher rate. If I were designing a dynamic scheduling component, I would elect to go with an even allocation of reservation stations. If the cost for adding another station was low enough, four for each the adder and the multiplier give the highest performance. Otherwise 3 adders and 2 or 3 multipliers give performance above 0.9 CPI and would be a good alternative. 
+
+The minimal number of reservation stations I would prefer to use would be 3 adder stations and 2 multiplier stations. This seems to be the fewest number of reservation stations before any significant decrease in performance is seen.
 
 \clearpage
 
@@ -126,26 +130,26 @@ Main:
 		ExecuteCycle()
 
 AddToReservationStation(Dest, Src1, Src):
-	While no open Reservation Stations:
+	While no open in ReservationStation:
 		ExecuteCycle()
-	Station = first open Reservation Station
+	Station = first open in ReservationStation
 	Station.Cycles = Instruction's Cycles
 
-	Mark Dest as busy in the Register File and set the Tag to Station
+	Mark Dest as busy in the RegisterFile and set the Tag to Station
 
-	If Src1 or Src2 are marked busy in Register File:
-		Set Station's tags to match the Register File
+	If Src1 or Src2 are marked busy in RegisterFile:
+		Set Station's tags to match the RegisterFile
 
 ExecuteCycle()
-	For each Station in Reservation Station:
+	For each Station in ReservationStation:
 		Decrement Station.Cycles
 		If Station.Cycles == 0:
 			Add Station to CompletionQueue
 	
 	If CompletionQueue not Empty:
 		Station = CompletionQueue.Pop()
-		Mark Register File associated with Station.Dest not busy
-		Clear this Station's Tag from other Reservation Stations
+		Mark RegisterFile associated with Station.Dest not busy
+		Clear this Station's Tag from other ReservationStations
 		
 \end{lstlisting}
 
